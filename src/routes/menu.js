@@ -80,14 +80,20 @@ router.get('/', async (req, res) => {
 router.get('/featured', async (req, res) => {
   try {
     const rawItems = await MenuItem.find({ status: 'approved', isAvailable: true })
-      .populate('vendorId', 'name businessName image subscriptionPlan')
+      .populate('vendorId', 'name businessName image subscriptionPlan subscriptionExpiresAt')
       .sort({ createdAt: -1 })
       .limit(20);
 
-    // Prioritize Premium vendors first, then sort by latest creation date
+    const isVendorActivePremium = (vendor) => {
+      if (!vendor || vendor.subscriptionPlan !== 'premium') return false;
+      if (!vendor.subscriptionExpiresAt) return true;
+      return new Date(vendor.subscriptionExpiresAt) > new Date();
+    };
+
+    // Prioritize active Premium vendors first, then sort by latest creation date
     const sorted = rawItems.sort((a, b) => {
-      const aPremium = a.vendorId?.subscriptionPlan === 'premium' ? 1 : 0;
-      const bPremium = b.vendorId?.subscriptionPlan === 'premium' ? 1 : 0;
+      const aPremium = isVendorActivePremium(a.vendorId) ? 1 : 0;
+      const bPremium = isVendorActivePremium(b.vendorId) ? 1 : 0;
       if (bPremium !== aPremium) {
         return bPremium - aPremium;
       }
@@ -218,9 +224,12 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
       });
     }
 
-    // Check vendor's subscription plan limit
+    // Check vendor's subscription plan limit with active expiration check
     const vendor = await User.findById(req.user._id);
-    const isPremium = vendor.subscriptionPlan === 'premium';
+    const isPremium =
+      vendor.subscriptionPlan === 'premium' &&
+      (!vendor.subscriptionExpiresAt ||
+        new Date(vendor.subscriptionExpiresAt) > new Date());
 
     if (!isPremium) {
       // Free plan: maximum 3 active/pending/approved items
