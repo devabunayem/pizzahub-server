@@ -81,77 +81,36 @@ router.post('/create-checkout-session', verifyToken, verifyRole('vendor'), async
 });
 
 /**
- * @route   POST /api/subscription/verify-session
- * @desc    Direct Stripe server-to-server payment verification
- *          Ensures premium activation is backed by verified Stripe checkout status
+ * @route   GET /api/subscription/session-status/:sessionId
+ * @desc    Read-only status check: verifies if Stripe webhook has processed this checkout session
+ *          NOTE: Per assignment specifications, this endpoint NEVER activates premium.
+ *          Premium activation is handled strictly and exclusively by the verified Stripe Webhook.
  * @access  Private (Vendor only)
  */
-router.post('/verify-session', verifyToken, verifyRole('vendor'), async (req, res) => {
+router.get('/session-status/:sessionId', verifyToken, verifyRole('vendor'), async (req, res) => {
   try {
-    const { sessionId } = req.body;
-    if (!sessionId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Session ID is required for verification.',
-      });
-    }
+    const { sessionId } = req.params;
+    const transaction = await Transaction.findOne({ stripeSessionId: sessionId });
+    const vendor = await User.findById(req.user._id);
 
-    const stripe = getStripe();
-    // Retrieve verified session directly from Stripe API
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-
-    if (!session || session.payment_status !== 'paid') {
-      return res.status(400).json({
-        success: false,
-        message: 'Payment has not been completed or verified.',
-      });
-    }
-
-    // Verify session belongs to the requesting vendor
-    if (session.metadata?.vendorId !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Forbidden. This payment session does not belong to your account.',
-      });
-    }
-
-    // Check if transaction already recorded
-    let transaction = await Transaction.findOne({ stripeSessionId: session.id });
-    if (!transaction) {
-      transaction = await Transaction.create({
-        vendorId: req.user._id,
-        plan: 'premium',
-        amount: (session.amount_total || 2999) / 100,
-        currency: session.currency || 'usd',
-        stripeSessionId: session.id,
-        stripeSubscriptionId: session.subscription || '',
-        status: 'succeeded',
-      });
-    }
-
-    // Upgrade vendor account
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days premium
-
-    const updatedVendor = await User.findByIdAndUpdate(
-      req.user._id,
-      {
-        subscriptionPlan: 'premium',
-        subscriptionExpiresAt: expiresAt,
-      },
-      { new: true }
-    );
+    const isPremium =
+      vendor.subscriptionPlan === 'premium' &&
+      (!vendor.subscriptionExpiresAt ||
+        new Date(vendor.subscriptionExpiresAt) > new Date());
 
     res.status(200).json({
       success: true,
-      message: 'Payment verified successfully! Welcome to PizzaHub Premium.',
-      vendor: updatedVendor,
-      transaction,
+      processedByWebhook: !!transaction,
+      isPremium,
+      vendor: {
+        subscriptionPlan: vendor.subscriptionPlan,
+        subscriptionExpiresAt: vendor.subscriptionExpiresAt,
+      },
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Failed to verify payment session.',
+      message: 'Failed to check session status.',
       error: error.message,
     });
   }
