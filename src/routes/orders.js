@@ -21,6 +21,17 @@ router.post('/', verifyToken, verifyRole('customer'), async (req, res) => {
       });
     }
 
+    // Validate delivery date is not in the past
+    const selectedDate = new Date(deliveryDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (isNaN(selectedDate.getTime()) || selectedDate < today) {
+      return res.status(400).json({
+        success: false,
+        message: 'Delivery date cannot be in the past.',
+      });
+    }
+
     // Verify item exists and is approved
     const item = await MenuItem.findById(itemId);
     if (!item) {
