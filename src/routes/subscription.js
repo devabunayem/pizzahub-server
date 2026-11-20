@@ -23,7 +23,12 @@ router.post('/create-checkout-session', verifyToken, verifyRole('vendor'), async
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
     const vendor = await User.findById(req.user._id);
 
-    if (vendor.subscriptionPlan === 'premium') {
+    const isAlreadyActivePremium =
+      vendor.subscriptionPlan === 'premium' &&
+      (!vendor.subscriptionExpiresAt ||
+        new Date(vendor.subscriptionExpiresAt) > new Date());
+
+    if (isAlreadyActivePremium) {
       return res.status(400).json({
         success: false,
         message: 'You already have an active Premium subscription.',
