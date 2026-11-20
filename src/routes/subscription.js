@@ -162,18 +162,23 @@ export const handleStripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+  if (!webhookSecret) {
+    console.error('CRITICAL: STRIPE_WEBHOOK_SECRET is not configured on the server.');
+    return res.status(500).send('Webhook signing secret is not configured.');
+  }
+
+  if (!sig) {
+    console.error('Missing Stripe-Signature header in webhook request.');
+    return res.status(400).send('Missing stripe-signature header.');
+  }
+
   let event;
 
   try {
-    if (webhookSecret && sig) {
-      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-    } else {
-      // Development or test event fallback
-      event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    }
+    event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
     console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    return res.status(400).send(`Webhook Signature Error: ${err.message}`);
   }
 
   // Handle successful checkout
@@ -183,21 +188,23 @@ export const handleStripeWebhook = async (req, res) => {
 
     if (vendorId) {
       try {
-        // Record transaction
+        // Idempotency check: prevent replay of already-processed sessions
         const existingTx = await Transaction.findOne({ stripeSessionId: session.id });
-        if (!existingTx) {
-          await Transaction.create({
-            vendorId,
-            plan: 'premium',
-            amount: (session.amount_total || 2999) / 100,
-            currency: session.currency || 'usd',
-            stripeSessionId: session.id,
-            stripeSubscriptionId: session.subscription || '',
-            status: 'succeeded',
-          });
+        if (existingTx) {
+          return res.status(200).json({ received: true, message: 'Already processed' });
         }
 
-        // Activate premium
+        await Transaction.create({
+          vendorId,
+          plan: 'premium',
+          amount: (session.amount_total || 2999) / 100,
+          currency: session.currency || 'usd',
+          stripeSessionId: session.id,
+          stripeSubscriptionId: session.subscription || '',
+          status: 'succeeded',
+        });
+
+        // Activate premium: +30 days from now
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 30);
 
@@ -206,9 +213,10 @@ export const handleStripeWebhook = async (req, res) => {
           subscriptionExpiresAt: expiresAt,
         });
 
-        console.log(`✅ Premium subscription activated via webhook for vendor: ${vendorId}`);
+        console.log(`✅ Premium subscription activated via verified webhook for vendor: ${vendorId}`);
       } catch (err) {
         console.error('Failed to update vendor subscription via webhook:', err);
+        return res.status(500).json({ error: 'Database update failed' });
       }
     }
   }

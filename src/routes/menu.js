@@ -1,4 +1,5 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
 import { MenuItem } from '../models/MenuItem.js';
 import { User } from '../models/User.js';
 import { verifyToken, verifyRole } from '../middlewares/auth.js';
@@ -78,14 +79,24 @@ router.get('/', async (req, res) => {
  */
 router.get('/featured', async (req, res) => {
   try {
-    const items = await MenuItem.find({ status: 'approved' })
+    const rawItems = await MenuItem.find({ status: 'approved', isAvailable: true })
       .populate('vendorId', 'name businessName image subscriptionPlan')
       .sort({ createdAt: -1 })
-      .limit(8);
+      .limit(20);
+
+    // Prioritize Premium vendors first, then sort by latest creation date
+    const sorted = rawItems.sort((a, b) => {
+      const aPremium = a.vendorId?.subscriptionPlan === 'premium' ? 1 : 0;
+      const bPremium = b.vendorId?.subscriptionPlan === 'premium' ? 1 : 0;
+      if (bPremium !== aPremium) {
+        return bPremium - aPremium;
+      }
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
     res.status(200).json({
       success: true,
-      items,
+      items: sorted.slice(0, 8),
     });
   } catch (error) {
     res.status(500).json({
@@ -136,6 +147,37 @@ router.get('/:id', async (req, res) => {
         success: false,
         message: 'Menu item not found.',
       });
+    }
+
+    // If item is not approved, only the vendor owner or admin may view it
+    if (item.status !== 'approved') {
+      let canView = false;
+      const authHeader = req.headers.authorization || req.cookies?.pizzahub_token;
+
+      if (authHeader) {
+        try {
+          const token = authHeader.startsWith('Bearer ')
+            ? authHeader.split(' ')[1]
+            : authHeader;
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          if (
+            decoded &&
+            (decoded.role === 'admin' ||
+              decoded.id === item.vendorId?._id?.toString())
+          ) {
+            canView = true;
+          }
+        } catch (e) {
+          // Token invalid or expired
+        }
+      }
+
+      if (!canView) {
+        return res.status(403).json({
+          success: false,
+          message: 'This menu item is currently pending approval or inactive.',
+        });
+      }
     }
 
     res.status(200).json({
