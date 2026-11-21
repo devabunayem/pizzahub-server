@@ -5,7 +5,8 @@
 ---
 
 ## 🔗 Project Links
-- **Live API Endpoint:** [https://pizzahub-server.onrender.com](https://pizzahub-server.onrender.com) *(Deploy URL)*
+- **Live API Endpoint:** [https://pizzahub-server-etarnity.vercel.app](https://pizzahub-server-etarnity.vercel.app) *(Also: [https://pizzahub-server-three-opal.vercel.app](https://pizzahub-server-three-opal.vercel.app))*
+- **Live Website:** [https://pizzahub-client-etarnity.vercel.app](https://pizzahub-client-etarnity.vercel.app)
 - **Client GitHub Repository:** [https://github.com/devabunayem/pizzahub-client](https://github.com/devabunayem/pizzahub-client)
 - **Server GitHub Repository:** [https://github.com/devabunayem/pizzahub-server](https://github.com/devabunayem/pizzahub-server)
 
