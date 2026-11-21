@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User.js';
 import { verifyToken } from '../middlewares/auth.js';
@@ -160,6 +161,75 @@ router.post('/login', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Login failed.',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   POST /api/auth/google
+ * @desc    Sign in or register via verified Google OAuth session
+ * @access  Public
+ */
+router.post('/google', async (req, res) => {
+  try {
+    const { name, email, image, role, businessName } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google account email is required.',
+      });
+    }
+
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (user) {
+      if (user.isBlocked) {
+        return res.status(403).json({
+          success: false,
+          message: 'Your account has been blocked. Please contact support.',
+        });
+      }
+
+      if (image && !user.image) {
+        user.image = image;
+        await user.save();
+      }
+    } else {
+      const safeRole = ['customer', 'vendor'].includes(role) ? role : 'customer';
+      const displayName = (name || email.split('@')[0] || 'Pizza Lover').trim();
+      const randomPassword = `${crypto.randomBytes(16).toString('hex')}Aa1`;
+
+      user = await User.create({
+        name: displayName,
+        email: email.toLowerCase(),
+        password: randomPassword,
+        image: image || '',
+        role: safeRole,
+        businessName:
+          safeRole === 'vendor'
+            ? (businessName || `${displayName}'s Pizza Kitchen`).trim()
+            : '',
+        subscriptionPlan: 'free',
+        isBlocked: false,
+      });
+    }
+
+    const token = generateToken(user);
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    res.status(200).json({
+      success: true,
+      message: `Welcome, ${user.name}!`,
+      token,
+      user: userResponse,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Google authentication sync failed.',
       error: error.message,
     });
   }

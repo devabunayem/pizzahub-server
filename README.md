@@ -75,7 +75,7 @@ JWT_EXPIRES_IN=7d
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 
-IMGBB_API_KEY=ed9cd2830c7038c0b9ba40977ad448f4
+IMGBB_API_KEY=your_imgbb_api_key
 ```
 
 ---

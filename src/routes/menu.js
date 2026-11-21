@@ -79,7 +79,7 @@ router.get('/', async (req, res) => {
  */
 router.get('/featured', async (req, res) => {
   try {
-    const rawItems = await MenuItem.find({ status: 'approved', isAvailable: true })
+    const rawItems = await MenuItem.find({ status: 'approved' })
       .populate('vendorId', 'name businessName image subscriptionPlan subscriptionExpiresAt')
       .sort({ createdAt: -1 })
       .limit(20);
