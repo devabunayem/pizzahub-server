@@ -310,14 +310,36 @@ router.patch('/:id', verifyToken, async (req, res) => {
 
     // Status management:
     // Admin can change to 'approved', 'rejected', 'pending', or 'inactive'
-    // Vendor can toggle availability ('inactive' or back to 'pending'/'approved' if previously approved)
+    // Vendor can toggle availability ('inactive' or back to 'approved' if within plan limits)
     if (status) {
       if (isAdmin) {
         item.status = status;
       } else if (isOwner) {
-        if (['inactive', 'approved'].includes(status)) {
-          // Vendor can deactivate or reactivate if previously approved
-          item.status = status;
+        if (status === 'inactive') {
+          item.status = 'inactive';
+        } else if (status === 'approved' && item.status === 'inactive') {
+          const vendor = await User.findById(req.user._id);
+          const isPremium =
+            vendor.subscriptionPlan === 'premium' &&
+            (!vendor.subscriptionExpiresAt ||
+              new Date(vendor.subscriptionExpiresAt) > new Date());
+
+          if (!isPremium) {
+            const currentActiveCount = await MenuItem.countDocuments({
+              vendorId: req.user._id,
+              _id: { $ne: item._id },
+              status: { $in: ['pending', 'approved'] },
+            });
+            if (currentActiveCount >= 3) {
+              return res.status(403).json({
+                success: false,
+                message:
+                  'Free plan limit reached (max 3 active items). Please upgrade to Premium to activate more items.',
+                limitReached: true,
+              });
+            }
+          }
+          item.status = 'approved';
         }
       }
     }
