@@ -14,12 +14,35 @@ const router = express.Router();
 router.post('/', verifyToken, verifyRole('customer'), async (req, res) => {
   try {
     const { itemId, deliveryDate, deliveryAddress, message } = req.body;
+    const cleanAddress = typeof deliveryAddress === 'string' ? deliveryAddress.trim() : '';
+    const cleanMessage = typeof message === 'string' ? message.trim() : '';
 
-    if (!itemId || !deliveryDate || !deliveryAddress) {
+    if (!itemId || !deliveryDate) {
       return res.status(400).json({
         success: false,
         message: 'Menu item ID, delivery date, and delivery address are required.',
       });
+    }
+
+    if (!cleanAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'Delivery address is required.',
+      });
+    }
+
+    if (cleanAddress.length > 300) {
+      return res.status(400).json({
+        success: false,
+        message: 'Delivery address must be 300 characters or fewer.',
+      });
+    }
+
+    if (cleanMessage.length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: 'Special instructions must be 500 characters or fewer.',
+       });
     }
 
     // Validate delivery date is not in the past
@@ -88,8 +111,8 @@ router.post('/', verifyToken, verifyRole('customer'), async (req, res) => {
       vendorId: item.vendorId,
       customerId: req.user._id,
       deliveryDate: new Date(deliveryDate),
-      deliveryAddress: deliveryAddress.trim(),
-      message: message ? message.trim() : '',
+      deliveryAddress: cleanAddress,
+      message: cleanMessage,
       status: 'pending',
     });
 
@@ -275,6 +298,67 @@ router.patch('/:id/status', verifyToken, verifyRole('vendor'), async (req, res) 
     res.status(500).json({
       success: false,
       message: 'Failed to update order status.',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   PATCH /api/orders/:id/pay
+ * @desc    Simple post-order payment confirmation (Customer only, no Stripe)
+ * @access  Private (Customer only)
+ */
+router.patch('/:id/pay', verifyToken, verifyRole('customer'), async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.',
+      });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.',
+      });
+    }
+
+    if (order.customerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access forbidden. You cannot pay for another customer’s order.',
+      });
+    }
+
+    if (['cancelled', 'rejected'].includes(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot pay for a ${order.status} order.`,
+      });
+    }
+
+    if (order.paymentStatus === 'paid') {
+      return res.status(400).json({
+        success: false,
+        message: 'Order is already paid.',
+      });
+    }
+
+    order.paymentStatus = 'paid';
+    order.paidAt = new Date();
+    await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Payment marked as completed.',
+      order,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process payment.',
       error: error.message,
     });
   }

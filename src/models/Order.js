@@ -25,16 +25,27 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Delivery address is required'],
       trim: true,
+      maxlength: [300, 'Delivery address cannot exceed 300 characters'],
     },
     message: {
       type: String,
       default: '',
       trim: true,
+      maxlength: [500, 'Message cannot exceed 500 characters'],
     },
     status: {
       type: String,
       enum: ['pending', 'accepted', 'rejected', 'cancelled'],
       default: 'pending',
+    },
+    paymentStatus: {
+      type: String,
+      enum: ['unpaid', 'paid'],
+      default: 'unpaid',
+    },
+    paidAt: {
+      type: Date,
+      default: null,
     },
   },
   {
