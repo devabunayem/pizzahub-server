@@ -13,6 +13,7 @@ const parseValidPrice = (val) => {
   return Number.isFinite(num) && num > 0 && num <= 10000 ? num : null;
 };
 const VALID_CATEGORIES = MenuItem.schema.path('category').enumValues;
+const VALID_STATUSES = MenuItem.schema.path('status').enumValues;
 
 /**
  * @route   GET /api/menu
@@ -87,10 +88,11 @@ router.get('/', async (req, res) => {
  */
 router.get('/featured', async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const rawItems = await MenuItem.find({ status: 'approved' })
       .populate('vendorId', 'name businessName image subscriptionPlan subscriptionExpiresAt')
-      .sort({ createdAt: -1 })
-      .limit(20);
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .limit(24);
 
     const isVendorActivePremium = (vendor) => {
       if (!vendor || vendor.subscriptionPlan !== 'premium') return false;
@@ -98,19 +100,21 @@ router.get('/featured', async (req, res) => {
       return new Date(vendor.subscriptionExpiresAt) > new Date();
     };
 
-    // Prioritize active Premium vendors first, then sort by latest creation date
+    // Prioritize active Premium vendors first, then most recently updated/approved
     const sorted = rawItems.sort((a, b) => {
       const aPremium = isVendorActivePremium(a.vendorId) ? 1 : 0;
       const bPremium = isVendorActivePremium(b.vendorId) ? 1 : 0;
       if (bPremium !== aPremium) {
         return bPremium - aPremium;
       }
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      const aTime = new Date(a.updatedAt || a.createdAt).getTime();
+      const bTime = new Date(b.updatedAt || b.createdAt).getTime();
+      return bTime - aTime;
     });
 
     res.status(200).json({
       success: true,
-      items: sorted.slice(0, 8),
+      items: sorted.slice(0, 9),
     });
   } catch (error) {
     res.status(500).json({
@@ -417,7 +421,14 @@ router.patch('/:id', verifyToken, async (req, res) => {
     // Status management:
     // Admin can change to 'approved', 'rejected', 'pending', or 'inactive'
     // Vendor can toggle availability ('inactive' or back to 'approved' if within plan limits)
-    if (status) {
+    if (status !== undefined) {
+      if (typeof status !== 'string' || !VALID_STATUSES.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid status. Must be pending, approved, rejected, or inactive.',
+        });
+      }
+
       if (isAdmin) {
         item.status = status;
       } else if (isOwner) {
@@ -446,6 +457,11 @@ router.patch('/:id', verifyToken, async (req, res) => {
             }
           }
           item.status = 'approved';
+        } else {
+          return res.status(403).json({
+            success: false,
+            message: 'Only administrators can approve, reject, or set this status.',
+          });
         }
       }
     }
