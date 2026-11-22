@@ -50,6 +50,48 @@ const menuItemSchema = new mongoose.Schema(
       enum: ['pending', 'approved', 'rejected', 'inactive'],
       default: 'pending',
     },
+    reviews: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        userName: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        userImage: {
+          type: String,
+          default: '',
+        },
+        rating: {
+          type: Number,
+          required: true,
+          min: 1,
+          max: 5,
+        },
+        comment: {
+          type: String,
+          required: true,
+          trim: true,
+          maxlength: 500,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    averageRating: {
+      type: Number,
+      default: 0,
+    },
+    reviewCount: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,

@@ -483,6 +483,98 @@ router.patch('/:id', verifyToken, async (req, res) => {
 });
 
 /**
+ * @route   POST /api/menu/:id/reviews
+ * @desc    Submit or update a customer review & rating on an approved menu item
+ * @access  Private (Customer only)
+ */
+router.post('/:id/reviews', verifyToken, verifyRole('customer'), async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found.',
+      });
+    }
+
+    const numRating = Number(req.body?.rating);
+    const cleanComment = typeof req.body?.comment === 'string' ? req.body.comment.trim() : '';
+
+    if (!Number.isInteger(numRating) || numRating < 1 || numRating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide an integer rating between 1 and 5.',
+      });
+    }
+
+    if (!cleanComment) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please write a brief review comment.',
+      });
+    }
+
+    if (cleanComment.length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: 'Review comment must be 500 characters or fewer.',
+      });
+    }
+
+    const item = await MenuItem.findById(req.params.id);
+    if (!item || item.status !== 'approved') {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found or not available for review.',
+      });
+    }
+
+    const existingIndex = (item.reviews || []).findIndex(
+      (r) => r.userId.toString() === req.user._id.toString()
+    );
+
+    if (existingIndex !== -1) {
+      item.reviews[existingIndex].rating = numRating;
+      item.reviews[existingIndex].comment = cleanComment;
+      item.reviews[existingIndex].userName = req.user.name;
+      item.reviews[existingIndex].userImage = req.user.image || '';
+      item.reviews[existingIndex].createdAt = new Date();
+    } else {
+      item.reviews.push({
+        userId: req.user._id,
+        userName: req.user.name,
+        userImage: req.user.image || '',
+        rating: numRating,
+        comment: cleanComment,
+        createdAt: new Date(),
+      });
+    }
+
+    const reviewCount = item.reviews.length;
+    const sum = item.reviews.reduce((acc, r) => acc + r.rating, 0);
+    item.reviewCount = reviewCount;
+    item.averageRating = reviewCount > 0 ? Number((sum / reviewCount).toFixed(1)) : 0;
+
+    await item.save();
+    await item.populate(
+      'vendorId',
+      'name businessName image subscriptionPlan subscriptionExpiresAt email'
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Review submitted!',
+      item,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit review.',
+      error: error.message,
+    });
+  }
+});
+
+/**
  * @route   DELETE /api/menu/:id
  * @desc    Delete a menu item
  *          Vendor can delete own items. Admin can delete any item.
