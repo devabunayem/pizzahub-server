@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { MenuItem } from '../models/MenuItem.js';
 import { Transaction } from '../models/Transaction.js';
@@ -104,6 +105,12 @@ router.get('/users', async (req, res) => {
  */
 router.patch('/users/:id/block', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
     const targetUser = await User.findById(req.params.id);
     if (!targetUser) {
       return res.status(404).json({

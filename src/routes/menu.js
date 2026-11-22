@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import { MenuItem } from '../models/MenuItem.js';
 import { User } from '../models/User.js';
@@ -143,6 +144,13 @@ router.get('/vendor/my-items', verifyToken, verifyRole('vendor'), async (req, re
  */
 router.get('/:id', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found.',
+      });
+    }
+
     const item = await MenuItem.findById(req.params.id).populate(
       'vendorId',
       'name businessName image subscriptionPlan email'
@@ -281,6 +289,13 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
  */
 router.patch('/:id', verifyToken, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found.',
+      });
+    }
+
     const item = await MenuItem.findById(req.params.id);
     if (!item) {
       return res.status(404).json({
@@ -368,6 +383,13 @@ router.patch('/:id', verifyToken, async (req, res) => {
  */
 router.delete('/:id', verifyToken, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found.',
+      });
+    }
+
     const item = await MenuItem.findById(req.params.id);
     if (!item) {
       return res.status(404).json({

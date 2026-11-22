@@ -38,11 +38,23 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, password, image, role, businessName } = req.body;
 
+    const cleanName = typeof name === 'string' ? name.trim() : '';
+    const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const cleanBusinessName = typeof businessName === 'string' ? businessName.trim() : '';
+    const cleanImage = typeof image === 'string' ? image.trim() : '';
+
     // Validate required fields
-    if (!name || !email || !password || !role) {
+    if (!cleanName || !cleanEmail || !password || !role) {
       return res.status(400).json({
         success: false,
         message: 'Name, email, password, and role are required.',
+      });
+    }
+
+    if (!/^\S+@\S+\.\S+$/.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid email address.',
       });
     }
 
@@ -64,7 +76,7 @@ router.post('/register', async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
       return res.status(400).json({
         success: false,
@@ -74,12 +86,12 @@ router.post('/register', async (req, res) => {
 
     // Create user
     const newUser = await User.create({
-      name,
-      email: email.toLowerCase(),
+      name: cleanName,
+      email: cleanEmail,
       password,
-      image: image || '',
+      image: cleanImage,
       role,
-      businessName: role === 'vendor' ? businessName || `${name}'s Pizza Kitchen` : '',
+      businessName: role === 'vendor' ? cleanBusinessName || `${cleanName}'s Pizza Kitchen` : '',
       subscriptionPlan: 'free',
       isBlocked: false,
     });

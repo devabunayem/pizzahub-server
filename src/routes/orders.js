@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { Order } from '../models/Order.js';
 import { MenuItem } from '../models/MenuItem.js';
 import { verifyToken, verifyRole } from '../middlewares/auth.js';
@@ -29,6 +30,13 @@ router.post('/', verifyToken, verifyRole('customer'), async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Delivery date cannot be in the past.',
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(itemId)) {
+      return res.status(404).json({
+        success: false,
+        message: 'The requested menu item does not exist.',
       });
     }
 
@@ -136,6 +144,12 @@ router.get('/my-orders', verifyToken, verifyRole('customer'), async (req, res) =
  */
 router.patch('/:id/cancel', verifyToken, verifyRole('customer'), async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.',
+      });
+    }
     const order = await Order.findById(req.params.id);
     if (!order) {
       return res.status(404).json({
@@ -219,6 +233,12 @@ router.patch('/:id/status', verifyToken, verifyRole('vendor'), async (req, res) 
       });
     }
 
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.',
+      });
+    }
     const order = await Order.findById(req.params.id);
     if (!order) {
       return res.status(404).json({
