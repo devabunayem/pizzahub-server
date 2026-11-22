@@ -37,7 +37,6 @@ router.post('/create-checkout-session', verifyToken, verifyRole('vendor'), async
 
     // PizzaHub Vendor Premium Subscription: $29.99 / month
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
       line_items: [
         {
           price_data: {

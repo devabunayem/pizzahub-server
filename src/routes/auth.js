@@ -58,6 +58,13 @@ router.post('/register', async (req, res) => {
       });
     }
 
+    if (cleanImage && !/^https?:\/\//i.test(cleanImage)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Profile image must be a valid http(s) URL.',
+      });
+    }
+
     // Role check: Only customer or vendor can be registered publicly
     if (!['customer', 'vendor'].includes(role)) {
       return res.status(400).json({
@@ -278,10 +285,37 @@ router.patch('/profile', verifyToken, async (req, res) => {
     const { name, image, businessName } = req.body;
     const user = await User.findById(req.user._id);
 
-    if (name) user.name = name.trim();
-    if (image !== undefined) user.image = image.trim();
-    if (user.role === 'vendor' && businessName) {
-      user.businessName = businessName.trim();
+    if (name !== undefined) {
+      const cleanName = typeof name === 'string' ? name.trim() : '';
+      if (!cleanName) {
+        return res.status(400).json({
+          success: false,
+          message: 'Full name cannot be empty.',
+        });
+      }
+      user.name = cleanName;
+    }
+
+    if (image !== undefined) {
+      const cleanImage = typeof image === 'string' ? image.trim() : '';
+      if (cleanImage && !/^https?:\/\//i.test(cleanImage)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Profile image must be a valid http(s) URL.',
+        });
+      }
+      user.image = cleanImage;
+    }
+
+    if (user.role === 'vendor' && businessName !== undefined) {
+      const cleanBusinessName = typeof businessName === 'string' ? businessName.trim() : '';
+      if (!cleanBusinessName) {
+        return res.status(400).json({
+          success: false,
+          message: 'Restaurant brand name cannot be empty.',
+        });
+      }
+      user.businessName = cleanBusinessName;
     }
 
     await user.save();

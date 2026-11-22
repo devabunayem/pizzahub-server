@@ -7,6 +7,13 @@ import { verifyToken, verifyRole } from '../middlewares/auth.js';
 
 const router = express.Router();
 
+const isValidHttpUrl = (val) => typeof val === 'string' && /^https?:\/\//i.test(val.trim());
+const parseValidPrice = (val) => {
+  const num = Number(val);
+  return Number.isFinite(num) && num > 0 && num <= 10000 ? num : null;
+};
+const VALID_CATEGORIES = MenuItem.schema.path('category').enumValues;
+
 /**
  * @route   GET /api/menu
  * @desc    Public browse approved & active menu items with search, filter, and sort
@@ -217,18 +224,41 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
   try {
     const { itemName, category, description, price, location, images } = req.body;
 
-    if (!itemName || !category || !description || price === undefined || !location || !images) {
+    const cleanName = typeof itemName === 'string' ? itemName.trim() : '';
+    const cleanDescription = typeof description === 'string' ? description.trim() : '';
+    const cleanLocation = typeof location === 'string' ? location.trim() : '';
+    const numPrice = parseValidPrice(price);
+
+    if (!cleanName || !category || !cleanDescription || price === undefined || !cleanLocation || !images) {
       return res.status(400).json({
         success: false,
         message: 'All fields (name, category, description, price, location, images) are required.',
       });
     }
 
-    const imageArray = Array.isArray(images) ? images : [images];
-    if (imageArray.length === 0) {
+    if (!VALID_CATEGORIES.includes(category)) {
       return res.status(400).json({
         success: false,
-        message: 'At least one image is required.',
+        message: 'Invalid category selected.',
+      });
+    }
+
+    if (numPrice === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Price must be a valid number between $0.01 and $10,000.',
+      });
+    }
+
+    const imageArray = (Array.isArray(images) ? images : [images])
+      .filter((img) => typeof img === 'string')
+      .map((img) => img.trim())
+      .filter(Boolean);
+
+    if (imageArray.length === 0 || !imageArray.every(isValidHttpUrl)) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one valid http(s) image URL is required.',
       });
     }
 
@@ -258,11 +288,11 @@ router.post('/', verifyToken, verifyRole('vendor'), async (req, res) => {
 
     const newItem = await MenuItem.create({
       vendorId: req.user._id,
-      itemName: itemName.trim(),
+      itemName: cleanName,
       category,
-      description: description.trim(),
-      price: Number(price),
-      location: location.trim(),
+      description: cleanDescription,
+      price: numPrice,
+      location: cleanLocation,
       images: imageArray,
       status: 'pending', // Default status until admin approval
     });
@@ -316,12 +346,73 @@ router.patch('/:id', verifyToken, async (req, res) => {
 
     const { itemName, category, description, price, location, images, status } = req.body;
 
-    if (itemName) item.itemName = itemName.trim();
-    if (category) item.category = category;
-    if (description) item.description = description.trim();
-    if (price !== undefined) item.price = Number(price);
-    if (location) item.location = location.trim();
-    if (images) item.images = Array.isArray(images) ? images : [images];
+    if (itemName !== undefined) {
+      const cleanName = typeof itemName === 'string' ? itemName.trim() : '';
+      if (!cleanName) {
+        return res.status(400).json({
+          success: false,
+          message: 'Item name cannot be empty.',
+        });
+      }
+      item.itemName = cleanName;
+    }
+
+    if (category !== undefined) {
+      if (!VALID_CATEGORIES.includes(category)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid category selected.',
+        });
+      }
+      item.category = category;
+    }
+
+    if (description !== undefined) {
+      const cleanDesc = typeof description === 'string' ? description.trim() : '';
+      if (!cleanDesc) {
+        return res.status(400).json({
+          success: false,
+          message: 'Description cannot be empty.',
+        });
+      }
+      item.description = cleanDesc;
+    }
+
+    if (price !== undefined) {
+      const numPrice = parseValidPrice(price);
+      if (numPrice === null) {
+        return res.status(400).json({
+          success: false,
+          message: 'Price must be a valid number between $0.01 and $10,000.',
+        });
+      }
+      item.price = numPrice;
+    }
+
+    if (location !== undefined) {
+      const cleanLoc = typeof location === 'string' ? location.trim() : '';
+      if (!cleanLoc) {
+        return res.status(400).json({
+          success: false,
+          message: 'Kitchen location cannot be empty.',
+        });
+      }
+      item.location = cleanLoc;
+    }
+
+    if (images !== undefined) {
+      const imageArray = (Array.isArray(images) ? images : [images])
+        .filter((img) => typeof img === 'string')
+        .map((img) => img.trim())
+        .filter(Boolean);
+      if (imageArray.length === 0 || !imageArray.every(isValidHttpUrl)) {
+        return res.status(400).json({
+          success: false,
+          message: 'At least one valid http(s) image URL is required.',
+        });
+      }
+      item.images = imageArray;
+    }
 
     // Status management:
     // Admin can change to 'approved', 'rejected', 'pending', or 'inactive'
